@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visual Search — Threat Detection Study</title>
+  <script src="https://unpkg.com/jspsych@7.3.4"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.3"></script>
+  <link rel="stylesheet" href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css">
+  <style>
+    body { background: #f8fafc; color: #1e293b; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .jspsych-content-wrapper { background: #f8fafc !important; }
+    .jspsych-content { max-width: 900px !important; }
+
+    /* ── Grid ─────────────────────────────────── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(8, 70px);
+      gap: 7px;
+      margin: 14px auto;
+      width: fit-content;
+    }
+    .cell {
+      width: 70px; height: 70px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 40px; line-height: 1;
+      background: #ffffff;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.08s, border-color 0.08s;
+      user-select: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .cell:hover { transform: scale(1.1); border-color: #6366f1; }
+    .cell.hit  { background: #dcfce7 !important; border-color: #22c55e !important; }
+    .cell.miss { background: #fee2e2 !important; border-color: #ef4444 !important; }
+
+    /* ── Instruction example grids ─────────────── */
+    .ex-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 65px);
+      gap: 7px;
+      margin: 10px auto;
+      width: fit-content;
+    }
+    .ex-cell {
+      width: 65px; height: 65px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 38px;
+      background: #ffffff;
+      border: 2px solid #e2e8f0;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .ex-cell.tgt { border-color: #f59e0b; background: #fffbeb; }
+
+    /* ── Progress ───────────────────────────────── */
+    .prog-wrap { width: 680px; max-width: 95vw; height: 6px; background: #e2e8f0; border-radius: 3px; margin: 6px auto; }
+    .prog-bar  { height: 6px; background: #6366f1; border-radius: 3px; }
+    .trial-num { color: #94a3b8; font-size: 13px; margin-bottom: 4px; }
+
+    /* ── Misc ───────────────────────────────────── */
+    h2 { color: #4f46e5; }
+    strong { color: #0f172a; }
+    .muted { color: #64748b; }
+    kbd {
+      display: inline-block;
+      background: #f1f5f9; border: 1px solid #cbd5e1;
+      border-radius: 5px; padding: 2px 10px;
+      font-family: monospace; font-size: 16px; color: #334155;
+    }
+    .timeout-msg { color: #ef4444; font-size: 20px; margin-top: 14px; }
+
+    /* ── Emoji animations ───────────────────────── */
+    @keyframes cell-wiggle {
+      0%,100% { transform: translateX(0) rotate(0deg); }
+      25%     { transform: translateX(-4px) rotate(-8deg); }
+      75%     { transform: translateX(4px)  rotate(8deg); }
+    }
+    @keyframes cell-bob {
+      0%,100% { transform: translateY(0) scale(1); }
+      50%     { transform: translateY(-6px) scale(1.1); }
+    }
+    @keyframes cell-pulse {
+      0%,100% { transform: scale(1); }
+      50%     { transform: scale(1.25); }
+    }
+    @keyframes cell-spin {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes cell-shake {
+      0%,100% { transform: rotate(0deg) translateX(0); }
+      20%     { transform: rotate(-10deg) translateX(-3px); }
+      40%     { transform: rotate(10deg)  translateX(3px); }
+      60%     { transform: rotate(-6deg)  translateX(-2px); }
+      80%     { transform: rotate(6deg)   translateX(2px); }
+    }
+
+    /* Response-phase cells (blank, clickable) */
+    .cell.resp { background: #f1f5f9; cursor: pointer; }
+    .cell.resp:hover { background: #e2e8f0; border-color: #6366f1; }
+
+    /* ── Welcome form ───────────────────────────── */
+    #welcome {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: 100vh;
+      text-align: center; padding: 40px;
+    }
+    #welcome h1 { color: #15803d; font-size: 2em; margin-bottom: 8px; }
+    #pid {
+      font-size: 22px; padding: 10px 20px; border-radius: 8px;
+      border: 2px solid #cbd5e1; background: #ffffff; color: #0f172a;
+      width: 200px; text-align: center; margin: 16px 0;
+    }
+    #pid:focus { outline: none; border-color: #15803d; }
+    #go-btn {
+      background: #16a34a; color: white; border: none;
+      padding: 12px 40px; font-size: 18px; border-radius: 8px; cursor: pointer;
+    }
+    #go-btn:hover { background: #15803d; }
+  </style>
+</head>
+<body>
+
+<!-- ── Welcome screen (pre-jsPsych) ─────────────────────────── -->
+<div id="welcome">
+  <h1>Visual Search Study</h1>
+  <p style="color:#0f172a; max-width:460px; line-height:1.7;">
+    Welcome! This takes about <strong>3 minutes</strong>.<br>
+    Enter your initials or a nickname to begin.
+  </p>
+  <input type="text" id="pid" placeholder="e.g. LT01" maxlength="12" autocomplete="off">
+  <br>
+  <button id="go-btn">Start →</button>
+  <p style="color:#475569; font-size:13px; margin-top:24px;">
+    Data is saved only on your device — no server is involved.
+  </p>
+</div>
+
+<script>
+// ────────────────────────────────────────────────────────────────
+//  STIMULI
+// ────────────────────────────────────────────────────────────────
+const EMO    = { snake:'🐍', spider:'🕷️', flower:'🌸', mushroom:'🍄' };
+const THREAT = new Set(['snake', 'spider']);
+
+// ────────────────────────────────────────────────────────────────
+//  CUSTOM PLUGIN
+// ────────────────────────────────────────────────────────────────
+class GridSearchPlugin {
+  static info = {
+    name: 'grid-search',
+    parameters: {
+      items:           { default: [] },
+      target_index:    { default: 0 },
+      target_name:     { default: '' },
+      distractor_name: { default: '' },
+      condition:       { default: '' },
+      show_feedback:   { default: false },
+      trial_duration:  { default: 5000 },
+      trial_num:       { default: 0 },
+      total_trials:    { default: 64 },
+      block:           { default: 'main' }
+    }
+  };
+
+  constructor(jsPsych) { this.jsPsych = jsPsych; }
+
+  trial(display_element, trial, on_load) {
+    const js = this.jsPsych;
+    const ANIMS       = ['cell-wiggle','cell-bob','cell-pulse','cell-spin','cell-shake'];
+    const DISPLAY_MS  = 300;   // brief flash — subcortical threat pathway window
+    const RESPONSE_MS = 1700;  // blank grid response window
+    let phase = 'display';
+    const pct = Math.round((trial.trial_num / trial.total_trials) * 100);
+
+    // ── Phase 1: animated grid ───────────────────────────────────
+    let html = `
+      <p class="trial-num">Trial ${trial.trial_num} of ${trial.total_trials}</p>
+      <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%"></div></div>
+      <p id="hint" class="muted" style="font-size:14px;margin:4px 0 2px;">Watch carefully…</p>
+      <div class="grid" id="g">
+    `;
+    for (let i = 0; i < 64; i++) {
+      const anim  = ANIMS[Math.floor(Math.random() * ANIMS.length)];
+      const speed = (0.3 + Math.random() * 0.5).toFixed(2);
+      const delay = (Math.random() * 0.4).toFixed(2);
+      html += `<div class="cell" data-i="${i}">` +
+              `<span style="display:inline-block;animation:${anim} ${speed}s ${delay}s ease-in-out infinite;">` +
+              `${trial.items[i]}</span></div>`;
+    }
+    html += '</div>';
+    display_element.innerHTML = html;
+    if (on_load) on_load();
+
+    // ── Phase 2: mask + response window ─────────────────────────
+    js.pluginAPI.setTimeout(() => {
+      if (phase !== 'display') return;
+      phase = 'response';
+
+      // Grid gone — blank response cells
+      display_element.querySelectorAll('.cell').forEach(c => {
+        c.innerHTML = '';
+        c.classList.add('resp');
+      });
+      const hint = display_element.querySelector('#hint');
+      if (hint) {
+        hint.textContent = 'Where was it? Click that cell.';
+        hint.style.color = '#15803d';
+        hint.style.fontWeight = '600';
+      }
+
+      const t0 = performance.now();
+
+      const finish = (clicked, rt) => {
+        if (phase !== 'response') return;
+        phase = 'done';
+        js.pluginAPI.clearAllTimeouts();
+
+        const correct = clicked !== -1 && clicked === trial.target_index;
+        const dist    = clicked === -1 ? null
+                      : Math.abs(Math.floor(clicked / 8) - Math.floor(trial.target_index / 8))
+                      + Math.abs((clicked % 8) - (trial.target_index % 8));
+
+        const end = () => {
+          display_element.innerHTML = '';
+          js.finishTrial({
+            rt, clicked_position: clicked, target_position: trial.target_index,
+            correct, distance: dist, timed_out: clicked === -1,
+            display_ms: DISPLAY_MS,
+            target_name: trial.target_name, distractor_name: trial.distractor_name,
+            condition: trial.condition, trial_num: trial.trial_num, block: trial.block
+          });
+        };
+
+        if (trial.show_feedback) {
+          display_element.querySelectorAll('.cell').forEach(c => {
+            const idx = parseInt(c.dataset.i);
+            // Clear all mask squares to blank
+            c.innerHTML = '';
+            c.classList.remove('resp');
+            // Target cell → green + show emoji
+            if (idx === trial.target_index) {
+              c.innerHTML = trial.items[idx];
+              c.classList.add('hit');
+            }
+            // Wrong click → red
+            if (idx === clicked && !correct) {
+              c.classList.add('miss');
+            }
+          });
+          setTimeout(end, 900);
+        } else {
+          end();
+        }
+      };
+
+      // Click on masked grid
+      display_element.querySelector('#g').addEventListener('click', e => {
+        const cell = e.target.closest('.cell');
+        if (!cell) return;
+        finish(parseInt(cell.dataset.i), Math.round(performance.now() - t0));
+      });
+
+      // Response window timeout → miss
+      js.pluginAPI.setTimeout(() => finish(-1, null), RESPONSE_MS);
+
+    }, DISPLAY_MS);
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+//  TRIAL FACTORY
+// ────────────────────────────────────────────────────────────────
+function makeTrial(tgt, dis, feedback, num, total, block) {
+  const pos   = Math.floor(Math.random() * 64);
+  const items = Array(64).fill(EMO[dis]);
+  items[pos]  = EMO[tgt];
+  return {
+    type:            GridSearchPlugin,
+    items,
+    target_index:    pos,
+    target_name:     tgt,
+    distractor_name: dis,
+    condition:       THREAT.has(tgt) ? 'threat_target' : 'nonthreat_target',
+    show_feedback:   feedback,
+    trial_duration:  3000,
+    trial_num:       num,
+    total_trials:    total,
+    block
+  };
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function buildPractice() {
+  const pairs = [['snake','flower'], ['flower','snake'], ['spider','mushroom']];
+  shuffle(pairs);
+  return pairs.map((p, i) => makeTrial(p[0], p[1], true, i + 1, 3, 'practice'));
+}
+
+function buildMain() {
+  // 8 conditions × 4 reps = 32 trials
+  const conds = [
+    ['snake','flower'],   ['spider','flower'],
+    ['snake','mushroom'], ['spider','mushroom'],
+    ['flower','snake'],   ['flower','spider'],
+    ['mushroom','snake'], ['mushroom','spider']
+  ];
+  const pairs = [];
+  for (const c of conds) for (let r = 0; r < 4; r++) pairs.push(c);
+  shuffle(pairs);
+  return pairs.map((p, i) => makeTrial(p[0], p[1], true, i + 1, 32, 'main'));
+}
+
+// ────────────────────────────────────────────────────────────────
+//  EXAMPLE GRID HTML (for instructions)
+// ────────────────────────────────────────────────────────────────
+function exGrid(cells, tgtEmoji) {
+  return '<div class="ex-grid">' +
+    cells.map(c => `<div class="ex-cell${c === tgtEmoji ? ' tgt' : ''}">${c}</div>`).join('') +
+    '</div>';
+}
+
+// ────────────────────────────────────────────────────────────────
+//  RESULTS DISPLAY
+// ────────────────────────────────────────────────────────────────
+function showResults(allData, pid) {
+  const main = allData.filter(d => d.block === 'main' && d.target_name);
+
+  const stats = trials => {
+    const correct  = trials.filter(d => d.correct);
+    const rts      = trials.map(d => d.rt).filter(r => r != null);
+    const meanRT   = rts.length ? Math.round(rts.reduce((a,b) => a+b, 0) / rts.length) : null;
+    const dists    = trials.map(d => d.distance).filter(d => d != null);
+    const meanDist = dists.length ? (dists.reduce((a,b) => a+b, 0) / dists.length).toFixed(1) : null;
+    return { n: trials.length, acc: Math.round(correct.length / (trials.length||1) * 100),
+             rt: meanRT, meanDist, errors: trials.length - correct.length };
+  };
+
+  const threat    = stats(main.filter(d => d.condition === 'threat_target'));
+  const nonthreat = stats(main.filter(d => d.condition === 'nonthreat_target'));
+
+  // Per-condition rows
+  const condNames = ['snake','spider','flower','mushroom'];
+  const condRows  = condNames.flatMap(tgt =>
+    ['flower','mushroom','snake','spider']
+      .filter(dis => {
+        const isThreatTgt = THREAT.has(tgt);
+        return isThreatTgt ? !THREAT.has(dis) : THREAT.has(dis);
+      })
+      .map(dis => {
+        const s = stats(main.filter(d => d.target_name===tgt && d.distractor_name===dis));
+        if (!s.n) return '';
+        const icon = EMO[tgt] + ' among ' + EMO[dis];
+        return `<tr>
+          <td style="text-align:left;padding:5px 12px;">${icon}</td>
+          <td>${s.acc}%</td>
+          <td>${s.rt != null ? s.rt+' ms' : '—'}</td>
+          <td>${s.errors}/${s.n}</td>
+        </tr>`;
+      })
+  ).filter(Boolean).join('');
+
+  // Raw CSV text for copying
+  const csvLines = [
+    'participant_id,trial_num,condition,target_name,distractor_name,correct,rt_ms,timed_out',
+    ...main.map(d =>
+      [pid, d.trial_num, d.condition, d.target_name, d.distractor_name,
+       d.correct?1:0, d.rt!=null?d.rt:'NA', d.timed_out?1:0].join(',')
+    )
+  ];
+  const copyText =
+`=== Visual Search Results ===
+Participant: ${pid}
+Date: ${new Date().toLocaleDateString()}
+Trials: ${main.length}
+
+SUMMARY
+Condition,Accuracy,Mean_RT_ms,Errors
+threat_target,${threat.acc}%,${threat.rt??'NA'},${threat.errors}/${threat.n}
+nonthreat_target,${nonthreat.acc}%,${nonthreat.rt??'NA'},${nonthreat.errors}/${nonthreat.n}
+
+RAW TRIALS
+${csvLines.join('\n')}`;
+
+  document.body.innerHTML = `
+    <div style="max-width:680px; margin:0 auto; padding:40px 20px; font-family:'Segoe UI',system-ui,sans-serif; color:#1e293b; background:#f8fafc; min-height:100vh;">
+      <h2 style="color:#4f46e5; text-align:center; margin-bottom:4px;">Your Results</h2>
+      <p style="text-align:center; color:#64748b; margin-top:0;">Participant: <strong style="color:#0f172a;">${pid}</strong></p>
+
+      <!-- Big comparison -->
+      <div style="display:flex; gap:16px; justify-content:center; margin:24px 0; flex-wrap:wrap;">
+        ${[
+          { label:'🐍🕷️ Threat targets', s: threat,    color:'#dc2626' },
+          { label:'🌸🍄 Non-threat',     s: nonthreat, color:'#16a34a' }
+        ].map(({label, s, color}) => `
+          <div style="background:#ffffff; border:2px solid ${color}44; border-radius:14px;
+                      padding:20px 28px; text-align:center; flex:1; min-width:200px;
+                      box-shadow:0 1px 6px rgba(0,0,0,0.08);">
+            <p style="margin:0 0 12px; font-size:15px; color:${color}; font-weight:600;">${label}</p>
+            <p style="margin:4px 0; font-size:28px; font-weight:bold; color:#0f172a;">${s.acc}%</p>
+            <p style="margin:0; color:#94a3b8; font-size:13px;">accuracy</p>
+            <p style="margin:12px 0 4px; font-size:24px; font-weight:bold; color:#0f172a;">
+              ${s.rt != null ? s.rt+' ms' : '—'}
+            </p>
+            <p style="margin:0; color:#94a3b8; font-size:13px;">mean response time</p>
+          </div>
+        `).join('')}
+      </div>
+
+      <!-- Per-condition table -->
+      <details style="margin-bottom:20px;">
+        <summary style="cursor:pointer; color:#6366f1; font-size:14px; margin-bottom:10px; font-weight:500;">
+          Per-condition breakdown
+        </summary>
+        <table style="width:100%; border-collapse:collapse; font-size:14px; color:#334155;">
+          <thead>
+            <tr style="color:#94a3b8; border-bottom:1px solid #e2e8f0;">
+              <th style="text-align:left; padding:6px 12px;">Condition</th>
+              <th>Accuracy</th><th>Mean RT</th><th>Errors</th>
+            </tr>
+          </thead>
+          <tbody>${condRows}</tbody>
+        </table>
+      </details>
+
+      <!-- About -->
+      <div style="background:#eef2ff; border:1px solid #c7d2fe; border-radius:12px; padding:18px 22px; margin-bottom:20px; font-size:14px; line-height:1.7; color:#475569;">
+        <strong style="color:#1e293b;">What this study measures:</strong>
+        whether humans detect <em>evolutionarily threatening stimuli</em>
+        (snakes, spiders, scorpions, crocodiles) faster than visually similar
+        non-threatening ones (caterpillars, beetles, shrimp, lizards) —
+        based on Öhman's <em>Fear Module Theory</em> and Isbell's <em>Snake Detection Hypothesis</em>.
+      </div>
+
+      <!-- Copy button + data box -->
+      <p style="color:#334155; font-size:14px; margin-bottom:8px;">
+        Copy your data and send it to the researcher:
+      </p>
+      <button id="copy-btn" style="background:#6366f1; color:white; border:none; padding:10px 28px;
+              font-size:16px; border-radius:8px; cursor:pointer; margin-bottom:12px;">
+        Copy Results
+      </button>
+      <textarea id="data-box" readonly
+        style="width:100%; height:180px; background:#f1f5f9; color:#64748b; border:1px solid #cbd5e1;
+               border-radius:8px; padding:10px; font-family:monospace; font-size:12px;
+               box-sizing:border-box; resize:vertical;"
+      >${copyText}</textarea>
+    </div>
+  `;
+
+  document.getElementById('copy-btn').addEventListener('click', () => {
+    navigator.clipboard.writeText(copyText).then(() => {
+      const btn = document.getElementById('copy-btn');
+      btn.textContent = 'Copied!';
+      btn.style.background = '#22c55e';
+      setTimeout(() => { btn.textContent = 'Copy Results'; btn.style.background = '#6366f1'; }, 2000);
+    }).catch(() => {
+      // Fallback: select the textarea
+      document.getElementById('data-box').select();
+    });
+  });
+}
+
+// ────────────────────────────────────────────────────────────────
+//  LAUNCH EXPERIMENT
+// ────────────────────────────────────────────────────────────────
+function launch(pid) {
+  document.getElementById('welcome').remove();
+
+  const js = initJsPsych({
+    on_finish() { showResults(js.data.get().values(), pid); }
+  });
+
+  // ── Utility trials ──────────────────────────
+  const fixation = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '<p style="font-size:52px; color:#6b7280; margin:0;">+</p>',
+    choices: 'NO_KEYS',
+    trial_duration: 500
+  };
+  const iti = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '',
+    choices: 'NO_KEYS',
+    trial_duration: 500
+  };
+
+  function interleave(trialList) {
+    const tl = [];
+    for (const t of trialList) { tl.push(fixation); tl.push(t); tl.push(iti); }
+    return tl;
+  }
+
+  // ── Instructions ────────────────────────────
+  const instructions = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `
+      <div style="max-width:620px; margin:0 auto; text-align:center;">
+        <h2 style="font-size:1.8em; margin-bottom:20px;">Your task: find the odd one out</h2>
+
+        <div style="text-align:left; margin-bottom:24px;">
+          <p style="font-size:1.15em; margin:10px 0;"><strong>1.</strong> The grid appears for just <strong>300 ms</strong></p>
+          <p style="font-size:1.15em; margin:10px 0;"><strong>2.</strong> It will then <strong>disappear</strong> and you have <strong>1.7 s</strong> to click the different emoji</p>
+          <p style="font-size:1.15em; margin:10px 0;"><strong>3.</strong> There will be <strong>3 rounds of practice</strong>, then <strong>32 actual trials</strong> with a break in between</p>
+        </div>
+
+        <div style="display:flex; gap:32px; justify-content:center; flex-wrap:wrap; margin:20px 0;">
+          <div>
+            <p style="font-size:13px; font-weight:600; color:#64748b; margin-bottom:6px;">EXAMPLE — find the 🐍</p>
+            ${exGrid(['🌸','🌸','🌸','🌸','🐍','🌸','🌸','🌸','🌸'], '🐍')}
+          </div>
+          <div>
+            <p style="font-size:13px; font-weight:600; color:#64748b; margin-bottom:6px;">EXAMPLE — find the 🌸</p>
+            ${exGrid(['🐍','🐍','🐍','🐍','🐍','🌸','🐍','🐍','🐍'], '🌸')}
+          </div>
+          <div>
+            <p style="font-size:13px; font-weight:600; color:#64748b; margin-bottom:6px;">EXAMPLE — find the 🕷️</p>
+            ${exGrid(['🍄','🍄','🍄','🍄','🕷️','🍄','🍄','🍄','🍄'], '🕷️')}
+          </div>
+          <div>
+            <p style="font-size:13px; font-weight:600; color:#64748b; margin-bottom:6px;">EXAMPLE — find the 🍄</p>
+            ${exGrid(['🕷️','🕷️','🕷️','🕷️','🕷️','🕷️','🍄','🕷️','🕷️'], '🍄')}
+          </div>
+        </div>
+
+        <p class="muted" style="margin-top:8px;">Press <kbd>Space</kbd> to begin</p>
+      </div>
+    `,
+    choices: [' ']
+  };
+
+  // ── Practice wrapper screens ─────────────────
+  const practiceIntro = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `
+      <div style="text-align:center;">
+        <h2>Practice Round</h2>
+        <p>3 trials with feedback after each response.<br>
+        <span style="color:#16a34a;">Green = correct</span> &nbsp;|&nbsp;
+        <span style="color:#dc2626;">Red = wrong</span></p>
+        <p class="muted" style="margin-top:20px;">Press <kbd>Space</kbd> to start</p>
+      </div>
+    `,
+    choices: [' ']
+  };
+
+  const practiceEnd = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `
+      <div style="text-align:center;">
+        <h2 style="color:#16a34a;">Practice Complete!</h2>
+        <p>The main task has <strong>32 trials</strong>.<br>
+        There'll be a short break at the halfway point.</p>
+        <p class="muted" style="margin-top:20px;">Press <kbd>Space</kbd> when you're ready</p>
+      </div>
+    `,
+    choices: [' ']
+  };
+
+  const midBreak = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `
+      <div style="text-align:center;">
+        <h2>Halfway — take a breath!</h2>
+        <p>16 trials down, 16 to go.</p>
+        <p class="muted" style="margin-top:20px;">Press <kbd>Space</kbd> to continue</p>
+      </div>
+    `,
+    choices: [' ']
+  };
+
+  // on_finish handles the results screen — no separate debrief trial needed
+
+  // ── Build trial lists ────────────────────────
+  const practiceTrials = buildPractice();
+  const mainTrials     = buildMain();
+  const block1         = mainTrials.slice(0, 16);
+  const block2         = mainTrials.slice(16);
+
+  // ── Run ──────────────────────────────────────
+  js.run([
+    instructions,
+    practiceIntro,
+    ...interleave(practiceTrials),
+    practiceEnd,
+    ...interleave(block1),
+    midBreak,
+    ...interleave(block2)
+  ]);
+}
+
+// ────────────────────────────────────────────────────────────────
+//  WELCOME FORM HANDLERS
+// ────────────────────────────────────────────────────────────────
+document.getElementById('go-btn').addEventListener('click', () => {
+  if (typeof initJsPsych === 'undefined') {
+    document.getElementById('welcome').innerHTML +=
+      '<p style="color:#ef4444;margin-top:16px;">⚠️ Could not load jsPsych — check your internet connection and refresh.</p>';
+    return;
+  }
+  const pid = document.getElementById('pid').value.trim() || ('P' + Date.now());
+  launch(pid);
+});
+document.getElementById('pid').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('go-btn').click();
+});
+</script>
+</body>
+</html>
